@@ -33,6 +33,18 @@ func IndexChunks(length int, chunkSize int) <-chan IndexChunk {
 	return ch
 }
 
+func Filter[V any](collection []V, predicate func(V, int) bool) []V {
+	result := []V{}
+
+	for i, item := range collection {
+		if predicate(item, i) {
+			result = append(result, item)
+		}
+	}
+
+	return result
+}
+
 func main() {
 	// usage:
 	if len(os.Args) < 3 {
@@ -51,6 +63,7 @@ func main() {
 	}
 
 	lines := strings.Split(string(input), "\n")
+	lines = Filter(lines, func(line string, i int) bool { return strings.HasPrefix(line, "INSERT INTO player_score VALUES") })
 	const bulkLimit = 5000
 	for idx := range IndexChunks(len(lines), bulkLimit) {
 		lines := lines[idx.From:idx.To]

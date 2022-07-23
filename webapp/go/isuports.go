@@ -107,7 +107,7 @@ func dispenseID(ctx context.Context) (string, error) {
 	}
 
 	// 文字種変更周りの規定を考慮して念のため
-	idString:= strings.ReplaceAll(id.String(), "-", "")
+	idString := strings.ReplaceAll(id.String(), "-", "")
 
 	return idString, nil
 
@@ -443,6 +443,10 @@ type PlayerScoreRow struct {
 	RowNum        int64  `db:"row_num"`
 	CreatedAt     int64  `db:"created_at"`
 	UpdatedAt     int64  `db:"updated_at"`
+}
+type PlayerScoreWithPlayer struct {
+	PlayerScore PlayerScoreRow `db:"player_score"`
+	Player      PlayerRow      `db:"player"`
 }
 
 // 排他ロックのためのファイル名を生成する
@@ -1393,30 +1397,39 @@ func competitionRankingHandler(c echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
-	defer fl.Close()
-	pss := []PlayerScoreRow{}
+	//defer fl.Close()
+	pss := []PlayerScoreWithPlayer{}
 	if err := tenantDB.SelectContext(
 		ctx,
 		&pss,
-		"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? ORDER BY row_num DESC",
+		"SELECT "+
+			" player_score.player_id AS 'player_score.player_id', player_score.score AS 'player_score.score', player_score.row_num AS 'player_score.row_num', "+
+			" player.id AS 'player.id', player.display_name AS 'player.display_name'"+
+			" FROM player_score "+
+			" JOIN player ON player.id = player_score.player_id "+
+			" WHERE player_score.tenant_id = ? AND player_score.competition_id = ? ORDER BY row_num DESC",
 		tenant.ID,
 		competitionID,
 	); err != nil {
+		fl.Close()
 		return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, %w", tenant.ID, competitionID, err)
 	}
+	fl.Close()
 	ranks := make([]CompetitionRank, 0, len(pss))
 	scoredPlayerSet := make(map[string]struct{}, len(pss))
-	for _, ps := range pss {
+	for _, ps_p := range pss {
+		ps := ps_p.PlayerScore
 		// player_scoreが同一player_id内ではrow_numの降順でソートされているので
 		// 現れたのが2回目以降のplayer_idはより大きいrow_numでスコアが出ているとみなせる
 		if _, ok := scoredPlayerSet[ps.PlayerID]; ok {
 			continue
 		}
 		scoredPlayerSet[ps.PlayerID] = struct{}{}
-		p, err := retrievePlayer(ctx, tenantDB, ps.PlayerID)
-		if err != nil {
-			return fmt.Errorf("error retrievePlayer: %w", err)
-		}
+		// p, err := retrievePlayer(ctx, tenantDB, ps.PlayerID)
+		// if err != nil {
+		// 	return fmt.Errorf("error retrievePlayer: %w", err)
+		// }
+		p := ps_p.Player
 		ranks = append(ranks, CompetitionRank{
 			Score:             ps.Score,
 			PlayerID:          p.ID,

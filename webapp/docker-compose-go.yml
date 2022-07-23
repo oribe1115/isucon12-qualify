@@ -15,3 +15,6 @@ services:
       - /home/isucon/initial_data:/home/isucon/initial_data
       - /home/isucon/tmp:/home/isucon/tmp
     init: true
+
+    ports:
+      - "8090:8090" # pprof用

@@ -216,6 +216,9 @@ func Run() {
 	adminDB.SetMaxOpenConns(10)
 	defer adminDB.Close()
 
+	// キャッシュの初期化
+	setupPlayerHandlerCache()
+
 	port := getEnv("SERVER_APP_PORT", "3000")
 	e.Logger.Infof("starting isuports server on : %s ...", port)
 	serverPort := fmt.Sprintf(":%s", port)
@@ -905,6 +908,9 @@ func playerDisqualifiedHandler(c echo.Context) error {
 			IsDisqualified: p.IsDisqualified,
 		},
 	}
+
+	go forgetPlayerHandlerCache(v.tenantID, playerID)
+
 	return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
 }
 
@@ -1124,6 +1130,8 @@ func competitionScoreHandler(c echo.Context) error {
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		})
+
+		go forgetPlayerHandlerCache(playerID, v.tenantID)
 	}
 
 	if _, err := tenantDB.ExecContext(
@@ -1222,34 +1230,35 @@ type PlayerHandlerResult struct {
 	Scores []PlayerScoreDetail `json:"scores"`
 }
 
-// 参加者向けAPI
-// GET /api/player/player/:player_id
-// 参加者の詳細情報を取得する
-func playerHandler(c echo.Context) error {
-	ctx := context.Background()
+type PHCKey struct {
+	PlayerID string
+	TenantID string
+}
 
-	v, err := parseViewer(c)
-	if err != nil {
-		return err
-	}
-	if v.role != RolePlayer {
-		return echo.NewHTTPError(http.StatusForbidden, "role player required")
-	}
+var playerHandlerCache *sc.Cache[PHCKey, *PlayerHandlerResult]
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+func setupPlayerHandlerCache() {
+	playerHandlerCache = sc.New[PHCKey, *PlayerHandlerResult](retrievePlayerHandlerResult, 3*time.Second, 3*time.Second)
+}
+
+func forgetPlayerHandlerCache(playerID string, tenantID string) {
+	phcKey := PHCKey{
+		PlayerID: playerID,
+		TenantID: tenantID,
+	}
+	playerHandlerCache.Forget(phcKey)
+}
+
+func retrievePlayerHandlerResult(ctx context.Context, key PHCKey) (*PlayerHandlerResult, error) {
+	tenantID := key.TenantID
+	playerID := key.PlayerID
+
+	tenantDB, err := connectToTenantDB(tenantID)
 	if err != nil {
 		return err
 	}
 	defer tenantDB.Close()
 
-	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
-		return err
-	}
-
-	playerID := c.Param("player_id")
-	if playerID == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "player_id is required")
-	}
 	p, err := retrievePlayer(ctx, tenantDB, playerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1259,7 +1268,7 @@ func playerHandler(c echo.Context) error {
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-	fl, err := flockByTenantID(v.tenantID)
+	fl, err := flockByTenantID(tenantID)
 	if err != nil {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
@@ -1275,7 +1284,7 @@ func playerHandler(c echo.Context) error {
 			" GROUP BY competition_id HAVING max(row_num) == row_num"+
 			" ORDER BY competition.created_at ASC",
 		p.ID,
-		v.tenantID,
+		tenantID,
 	); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("error Select player_score: %w", err)
 	}
@@ -1322,6 +1331,45 @@ func playerHandler(c echo.Context) error {
 			Scores: psds,
 		},
 	}
+	return &res
+}
+
+// 参加者向けAPI
+// GET /api/player/player/:player_id
+// 参加者の詳細情報を取得する
+func playerHandler(c echo.Context) error {
+	ctx := context.Background()
+
+	v, err := parseViewer(c)
+	if err != nil {
+		return err
+	}
+	if v.role != RolePlayer {
+		return echo.NewHTTPError(http.StatusForbidden, "role player required")
+	}
+
+	tenantDB, err := connectToTenantDB(v.tenantID)
+	if err != nil {
+		return err
+	}
+	defer tenantDB.Close()
+
+	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
+		return err
+	}
+
+	playerID := c.Param("player_id")
+	if playerID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "player_id is required")
+	}
+
+	key := PHCKey{
+		PlayerID: playerID,
+		TenantID: v.tenantID,
+	}
+
+	res, _ := playerHandlerCache.Get(context.Background(), key)
+
 	return c.JSON(http.StatusOK, res)
 }
 

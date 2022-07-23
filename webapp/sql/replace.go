@@ -13,11 +13,11 @@ func handle(n int, err error) {
 
 func main() {
 	// usage:
-	if len(os.Args) < 5 {
+	if len(os.Args) < 3 {
 		panic("usage: go run replace.go filename newFilename")
 	}
-	filename := os.Args[3]
-	newFilename := os.Args[4]
+	filename := os.Args[1]
+	newFilename := os.Args[2]
 
 	input, err := os.ReadFile(filename)
 	if err != nil {

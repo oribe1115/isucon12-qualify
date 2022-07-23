@@ -221,7 +221,7 @@ func Run() {
 	vhs := []VisitHistorySummaryRow2{}
 	if err := adminDB.Select(
 		&vhs,
-		"SELECT player_id, tenant_id, competition_id, created_at, MIN(created_at) AS min_created_at FROM visit_history GROUP BY (tenant_id, competition_id, player_id)",
+		"SELECT player_id, tenant_id, competition_id, created_at, MIN(created_at) AS min_created_at FROM visit_history GROUP BY tenant_id, competition_id, player_id",
 	); err != nil {
 		e.Logger.Fatalf("error Select visit_history: %w", err)
 		return

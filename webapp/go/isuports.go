@@ -1150,10 +1150,10 @@ func competitionScoreHandler(c echo.Context) error {
 
 	if _, err := tenantDB.NamedExecContext(
 		ctx,
-		"INSERT INTO player_score VALUES (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (:id, :tenant_id, :player_id, :competition_id, :score, :row_num, :created_at, :updated_at)",
+		"INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (:id, :tenant_id, :player_id, :competition_id, :score, :row_num, :created_at, :updated_at)",
 		playerScoreRows,
 	); err != nil {
-		return fmt.Errorf("error Insert player_score as bulk insert")
+		return fmt.Errorf("error Insert player_score as bulk insert: %w", err)
 	}
 
 	return c.JSON(http.StatusOK, SuccessResult{

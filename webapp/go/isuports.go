@@ -1302,7 +1302,7 @@ func playerHandler(c echo.Context) error {
 		"SELECT p.tenant_id AS tenant_id, p.id AS id, player_id, competition_id, score, row_num, p.created_at AS created_at, p.updated_at AS updated_at"+
 			" FROM player_score AS p INNER JOIN competition ON competition_id = competition.id"+
 			" WHERE player_id = ? AND p.tenant_id = ?"+
-			" GROUP BY competition_id HAVING max(row_num) == row_num"+
+			" GROUP BY competition_id HAVING max(row_num) = row_num"+
 			" ORDER BY competition.created_at ASC",
 		p.ID,
 		v.tenantID,

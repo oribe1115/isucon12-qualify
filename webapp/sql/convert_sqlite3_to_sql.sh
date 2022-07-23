@@ -6,7 +6,7 @@ ISUCON_DB_USER=${ISUCON_DB_USER:-root}
 ISUCON_DB_PASSWORD=${ISUCON_DB_PASSWORD:-root}
 ISUCON_DB_NAME=${ISUCON_DB_NAME:-isuports}
 
-for tenant_id in $(ls ../tenant_db/*.db | sed -e "s/^\.\.\/tenant_db\///" -e "s/\.db$//")
+for tenant_id in $(ls ../../initial_data/*.db | sed -e "s/^\.\.\/\.\.\/initial_data\///" -e "s/\.db$//")
 do
   echo "tenant $tenant_id setup"
   cat <<EOF > "tenant_init_$tenant_id.sql"

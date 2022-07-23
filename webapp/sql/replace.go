@@ -34,7 +34,7 @@ func main() {
 		if i%bulkLimit == 0 {
 			handle(newFile.WriteString(strings.TrimSuffix(line, ";") + ","))
 		} else {
-			handle(newFile.WriteString(strings.TrimPrefix(line, "INSERT INTO player_score VALUES")))
+			handle(newFile.WriteString(strings.TrimSuffix(strings.TrimPrefix(line, "INSERT INTO player_score VALUES"), ";")))
 			if i%bulkLimit != bulkLimit-1 {
 				handle(newFile.WriteString(","))
 			} else {

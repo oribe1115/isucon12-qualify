@@ -1242,7 +1242,7 @@ type PHCKey struct {
 var playerHandlerCache *sc.Cache[PHCKey, *PlayerHandlerResult]
 
 func setupPlayerHandlerCache() {
-	playerHandlerCache, _ = sc.New[PHCKey, *PlayerHandlerResult](retrievePlayerHandlerResult, 3*time.Second, 3*time.Second)
+	playerHandlerCache, _ = sc.New[PHCKey, *PlayerHandlerResult](retrievePlayerHandlerResult, 300*time.Hour, 300*time.Hour)
 }
 
 func forgetPlayerHandlerCache(playerID string, tenantID int64) {

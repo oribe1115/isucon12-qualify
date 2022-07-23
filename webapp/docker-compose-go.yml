@@ -13,6 +13,7 @@ services:
       - /home/isucon/webapp/sql:/home/isucon/webapp/sql
       - /home/isucon/webapp/public.pem:/home/isucon/webapp/public.pem:ro
       - /home/isucon/initial_data:/home/isucon/initial_data
+      - /home/isucon/webapp/tenant_db_index:/home/isucon/webapp/tenant_db_index
       - /home/isucon/tmp:/home/isucon/tmp
     init: true
 

@@ -816,7 +816,7 @@ type PlayersAddHandlerResult struct {
 }
 
 // テナント管理者向けAPI
-// GET /api/organizer/players/add
+// POST /api/organizer/players/add
 // テナントに参加者を追加する
 func playersAddHandler(c echo.Context) error {
 	ctx := context.Background()
@@ -839,33 +839,35 @@ func playersAddHandler(c echo.Context) error {
 	}
 	displayNames := params["display_name[]"]
 
+	now := time.Now().Unix()
 	pds := make([]PlayerDetail, 0, len(displayNames))
+	querys := ""
+	queryParams := []interface{}{}
 	for _, displayName := range displayNames {
 		id, err := dispenseID(ctx)
 		if err != nil {
 			return fmt.Errorf("error dispenseID: %w", err)
 		}
 
-		now := time.Now().Unix()
+		if querys != "" {
+			querys += ","
+		}
+		querys += "(?, ?, ?, ?, ?, ?)"
+		queryParams = append(queryParams, id, v.tenantID, displayName, false, now, now)
+		pds = append(pds, PlayerDetail{
+			ID:             id,
+			DisplayName:    displayName,
+			IsDisqualified: false,
+		})
+	}
+	if len(queryParams) > 0 {
 		if _, err := tenantDB.ExecContext(
 			ctx,
-			"INSERT INTO player (id, tenant_id, display_name, is_disqualified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-			id, v.tenantID, displayName, false, now, now,
+			"INSERT INTO player (id, tenant_id, display_name, is_disqualified, created_at, updated_at) VALUES "+querys,
+			queryParams...,
 		); err != nil {
-			return fmt.Errorf(
-				"error Insert player at tenantDB: id=%s, displayName=%s, isDisqualified=%t, createdAt=%d, updatedAt=%d, %w",
-				id, displayName, false, now, now, err,
-			)
+			return fmt.Errorf("error Insert player at tenantDB: %w", err)
 		}
-		p, err := retrievePlayer(ctx, tenantDB, id)
-		if err != nil {
-			return fmt.Errorf("error retrievePlayer: %w", err)
-		}
-		pds = append(pds, PlayerDetail{
-			ID:             p.ID,
-			DisplayName:    p.DisplayName,
-			IsDisqualified: p.IsDisqualified,
-		})
 	}
 
 	res := PlayersAddHandlerResult{

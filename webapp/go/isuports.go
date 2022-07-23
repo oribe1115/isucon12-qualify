@@ -445,8 +445,8 @@ type PlayerScoreRow struct {
 	UpdatedAt     int64  `db:"updated_at"`
 }
 type PlayerScoreWithPlayer struct {
-	playerScore PlayerScoreRow `db:"player_score"`
-	player      PlayerRow      `db:"player"`
+	PlayerScore PlayerScoreRow `db:"player_score"`
+	Player      PlayerRow      `db:"player"`
 }
 
 // 排他ロックのためのファイル名を生成する
@@ -1418,7 +1418,7 @@ func competitionRankingHandler(c echo.Context) error {
 	ranks := make([]CompetitionRank, 0, len(pss))
 	scoredPlayerSet := make(map[string]struct{}, len(pss))
 	for _, ps_p := range pss {
-		ps := ps_p.playerScore
+		ps := ps_p.PlayerScore
 		// player_scoreが同一player_id内ではrow_numの降順でソートされているので
 		// 現れたのが2回目以降のplayer_idはより大きいrow_numでスコアが出ているとみなせる
 		if _, ok := scoredPlayerSet[ps.PlayerID]; ok {
@@ -1429,7 +1429,7 @@ func competitionRankingHandler(c echo.Context) error {
 		// if err != nil {
 		// 	return fmt.Errorf("error retrievePlayer: %w", err)
 		// }
-		p := ps_p.player
+		p := ps_p.Player
 		ranks = append(ranks, CompetitionRank{
 			Score:             ps.Score,
 			PlayerID:          p.ID,

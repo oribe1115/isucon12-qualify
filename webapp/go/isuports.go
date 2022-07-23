@@ -1818,5 +1818,6 @@ func initializeHandler(c echo.Context) error {
 		Lang: "go",
 	}
 	billingReportCache = sync.Map{}
+	wg.Wait()
 	return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
 }

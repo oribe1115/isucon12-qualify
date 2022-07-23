@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	_ "net/http/pprof"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/gofrs/flock"
@@ -137,7 +137,7 @@ func Run() {
 	go func() {
 		log.Fatal(http.ListenAndServe(":6060", nil))
 	}()
-	
+
 	e := echo.New()
 	e.Debug = true
 	e.Logger.SetLevel(log.DEBUG)
@@ -161,31 +161,39 @@ func Run() {
 	e.Use(SetCacheControlPrivate)
 
 	// SaaS管理者向けAPI
-	e.POST("/api/admin/tenants/add", tenantsAddHandler)
-	e.GET("/api/admin/tenants/billing", tenantsBillingHandler)
+	e.POST("/api/admin/tenants/add", tenantsAddHandler)        // 10 pts, critical, 429 allowed
+	e.GET("/api/admin/tenants/billing", tenantsBillingHandler) // 10 pts
 
 	// テナント管理者向けAPI - 参加者追加、一覧、失格
-	e.GET("/api/organizer/players", playersListHandler)
-	e.POST("/api/organizer/players/add", playersAddHandler)
-	e.POST("/api/organizer/player/:player_id/disqualified", playerDisqualifiedHandler)
+	e.GET("/api/organizer/players", playersListHandler)     // 10 pts
+	e.POST("/api/organizer/players/add", playersAddHandler) // 10 pts
+	// ここからレスポンスを返して以下へ反映まで3秒の猶予がある
+	// - GET /api/player/:player_id
+	// - GET /api/player/competition/:competition_id/ranking
+	// - GET /api/player/competitions
+	e.POST("/api/organizer/player/:player_id/disqualified", playerDisqualifiedHandler) // 10 pts, critical
 
 	// テナント管理者向けAPI - 大会管理
-	e.POST("/api/organizer/competitions/add", competitionsAddHandler)
-	e.POST("/api/organizer/competition/:competition_id/finish", competitionFinishHandler)
-	e.POST("/api/organizer/competition/:competition_id/score", competitionScoreHandler)
-	e.GET("/api/organizer/billing", billingHandler)
-	e.GET("/api/organizer/competitions", organizerCompetitionsHandler)
+	e.POST("/api/organizer/competitions/add", competitionsAddHandler) // 10 pts, critical, 429 allowed
+	// ここからレスポンスを返して以下へ反映まで3秒の猶予がある
+	// - GET /api/organizer/billing
+	// - GET /api/admin/tenants/billing
+	e.POST("/api/organizer/competition/:competition_id/finish", competitionFinishHandler) // 10 pts, critical
+	e.POST("/api/organizer/competition/:competition_id/score", competitionScoreHandler)   // 10 pts, critical
+	e.GET("/api/organizer/billing", billingHandler)                                       // 10 pts
+	e.GET("/api/organizer/competitions", organizerCompetitionsHandler)                    // 10 pts
 
 	// 参加者向けAPI
-	e.GET("/api/player/player/:player_id", playerHandler)
-	e.GET("/api/player/competition/:competition_id/ranking", competitionRankingHandler)
-	e.GET("/api/player/competitions", playerCompetitionsHandler)
+	// 失格済みプレイヤーでリクエスト成功するとcriticalエラー（ただし3秒の余裕がある）
+	e.GET("/api/player/player/:player_id", playerHandler)                               // 1 pt
+	e.GET("/api/player/competition/:competition_id/ranking", competitionRankingHandler) // 1 pt
+	e.GET("/api/player/competitions", playerCompetitionsHandler)                        // 1 pt
 
 	// 全ロール及び未認証でも使えるhandler
 	e.GET("/api/me", meHandler)
 
 	// ベンチマーカー向けAPI
-	e.POST("/initialize", initializeHandler)
+	e.POST("/initialize", initializeHandler) // 30s timeout
 
 	e.HTTPErrorHandler = errorResponseHandler
 

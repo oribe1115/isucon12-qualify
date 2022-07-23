@@ -6,7 +6,7 @@ output: count,5xx,method,uri,min,max,sum,avg,p99                    # string(com
 
 matching_groups:            # array
   - /api/admin/tenants/add$
-  - /api/admin/tenants/billing$
+  - /api/admin/tenants/billing
   
   - /api/organizer/players$
   - /api/organizer/players/add$

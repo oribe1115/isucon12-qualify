@@ -225,29 +225,12 @@ func Run() {
 	); err != nil && err != sql.ErrNoRows {
 		e.Logger.Fatalf("error Select visit_history: %w", err)
 	}
-	minCreatedAtMap := map[string]int64{}
-	for _, vh := range vhs1 {
-		minCreatedAtMap[strconv.FormatInt(vh.TenantID, 10)+","+vh.CompetitionID+","+vh.PlayerID] = vh.MinCreatedAt
-	}
-	vhs := []VisitHistorySummaryRow2{}
-	if err := adminDB.Select(
-		&vhs,
-		"SELECT player_id, tenant_id, competition_id, created_at, created_at as min_created_at FROM visit_history",
-	); err != nil {
-		e.Logger.Fatalf("error Select visit_history: %w", err)
-		return
-	}
-	count := 0
 	taskStr := ""
 	taskArray := []interface{}{}
-	for _, vh := range vhs {
-		if minCreatedAtMap[strconv.FormatInt(vh.TenantID, 10)+","+vh.CompetitionID+","+vh.PlayerID] == vh.CreatedAt {
-			continue
-		}
-		count += 1
-		taskStr += "OR(tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at = ?)"
-		taskArray = append(taskArray, vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt)
-		if count%5000 == 0 {
+	for _, vh := range vhs1 {
+		taskStr += "OR(tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at != ?)"
+		taskArray = append(taskArray, vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.MinCreatedAt)
+		if len(taskArray) > 5000 {
 			if _, err := adminDB.Exec(
 				"DELETE FROM visit_history WHERE 1=0 "+taskStr,
 				taskArray...,

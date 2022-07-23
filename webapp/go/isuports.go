@@ -68,6 +68,8 @@ func connectAdminDB() (*sqlx.DB, error) {
 	config.Passwd = getEnv("ISUCON_DB_PASSWORD", "isucon")
 	config.DBName = getEnv("ISUCON_DB_NAME", "isuports")
 	config.ParseTime = true
+	config.Params = map[string]string{}
+	config.Params["sql_mode"] = "NO_ENGINE_SUBSTITUTION"
 	dsn := config.FormatDSN()
 	return sqlx.Open("mysql", dsn)
 }
@@ -219,12 +221,15 @@ func Run() {
 	vhs := []VisitHistorySummaryRow2{}
 	if err := adminDB.Select(
 		&vhs,
-		"SELECT * FROM visit_history GROUP BY player_id HAVING MIN(created_at)!=created_at",
+		"SELECT *, MIN(created_at) AS min_created_at FROM visit_history GROUP BY (tenant_id, competition_id, player_id)",
 	); err != nil {
 		e.Logger.Fatalf("error Select visit_history: %w", err)
 		return
 	}
 	for _, vh := range vhs {
+		if vh.MinCreatedAt == vh.CreatedAt {
+			continue
+		}
 		if _, err := adminDB.Exec(
 			"DELETE FROM visit_history WHERE tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at = ?",
 			vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt,
@@ -587,6 +592,7 @@ type VisitHistorySummaryRow2 struct {
 	TenantID      int64  `db:"tenant_id"`
 	CompetitionID string `db:"competition_id"`
 	CreatedAt     int64  `db:"created_at"`
+	MinCreatedAt  int64  `db:"min_created_at"`
 }
 
 // 大会ごとの課金レポートを計算する

@@ -6,7 +6,7 @@ output: count,5xx,method,uri,min,max,sum,avg,p99                    # string(com
 
 matching_groups:            # array
   - /api/admin/tenants/add$
-  - /api/admin/tenants/billing$
+  - /api/admin/tenants/billing
   
   - /api/organizer/players$
   - /api/organizer/players/add$
@@ -19,7 +19,7 @@ matching_groups:            # array
   - /api/organizer/competitions$
 
   - /api/player/player/[0-9a-f]+$
-  - /api/player/competition/[0-9a-f]+/ranking$
+  - /api/player/competition/[0-9a-f]+/ranking
   - /api/player/competitions$
 
   - /api/me$

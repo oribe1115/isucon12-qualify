@@ -206,6 +206,9 @@ func Run() {
 
 	// 参加者向けAPI
 	// 失格済みプレイヤーでリクエスト成功するとcriticalエラー（ただし3秒の余裕がある）
+	e.GET("/api/player/player/cache_stats", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, playerHandlerCache.Stats())
+	})
 	e.GET("/api/player/player/:player_id", playerHandler)                               // 1 pt
 	e.GET("/api/player/competition/:competition_id/ranking", competitionRankingHandler) // 1 pt
 	e.GET("/api/player/competitions", playerCompetitionsHandler)                        // 1 pt
@@ -248,6 +251,9 @@ func Run() {
 		dsn := config.FormatDSN()
 		return sqlx.Open("mysql", dsn)
 	}, 300*time.Hour, 300*time.Hour)
+
+	// キャッシュの初期化
+	setupPlayerHandlerCache()
 
 	port := getEnv("SERVER_APP_PORT", "3000")
 	e.Logger.Infof("starting isuports server on : %s ...", port)
@@ -848,7 +854,7 @@ type PlayersAddHandlerResult struct {
 }
 
 // テナント管理者向けAPI
-// GET /api/organizer/players/add
+// POST /api/organizer/players/add
 // テナントに参加者を追加する
 func playersAddHandler(c echo.Context) error {
 	ctx := context.Background()
@@ -871,33 +877,35 @@ func playersAddHandler(c echo.Context) error {
 	}
 	displayNames := params["display_name[]"]
 
+	now := time.Now().Unix()
 	pds := make([]PlayerDetail, 0, len(displayNames))
+	querys := ""
+	queryParams := []interface{}{}
 	for _, displayName := range displayNames {
 		id, err := dispenseID(ctx)
 		if err != nil {
 			return fmt.Errorf("error dispenseID: %w", err)
 		}
 
-		now := time.Now().Unix()
+		if querys != "" {
+			querys += ","
+		}
+		querys += "(?, ?, ?, ?, ?, ?)"
+		queryParams = append(queryParams, id, v.tenantID, displayName, false, now, now)
+		pds = append(pds, PlayerDetail{
+			ID:             id,
+			DisplayName:    displayName,
+			IsDisqualified: false,
+		})
+	}
+	if len(queryParams) > 0 {
 		if _, err := tenantDB.ExecContext(
 			ctx,
-			"INSERT INTO player (id, tenant_id, display_name, is_disqualified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-			id, v.tenantID, displayName, false, now, now,
+			"INSERT INTO player (id, tenant_id, display_name, is_disqualified, created_at, updated_at) VALUES "+querys,
+			queryParams...,
 		); err != nil {
-			return fmt.Errorf(
-				"error Insert player at tenantDB: id=%s, displayName=%s, isDisqualified=%t, createdAt=%d, updatedAt=%d, %w",
-				id, displayName, false, now, now, err,
-			)
+			return fmt.Errorf("error Insert player at tenantDB: %w", err)
 		}
-		p, err := retrievePlayer(ctx, tenantDB, id)
-		if err != nil {
-			return fmt.Errorf("error retrievePlayer: %w", err)
-		}
-		pds = append(pds, PlayerDetail{
-			ID:             p.ID,
-			DisplayName:    p.DisplayName,
-			IsDisqualified: p.IsDisqualified,
-		})
 	}
 
 	res := PlayersAddHandlerResult{
@@ -957,6 +965,9 @@ func playerDisqualifiedHandler(c echo.Context) error {
 			IsDisqualified: p.IsDisqualified,
 		},
 	}
+
+	forgetPlayerHandlerCache(playerID, v.tenantID)
+
 	return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
 }
 
@@ -1176,6 +1187,8 @@ func competitionScoreHandler(c echo.Context) error {
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		})
+
+		forgetPlayerHandlerCache(playerID, v.tenantID)
 	}
 
 	if _, err := tenantDB.ExecContext(
@@ -1274,6 +1287,106 @@ type PlayerHandlerResult struct {
 	Scores []PlayerScoreDetail `json:"scores"`
 }
 
+type PHCKey struct {
+	PlayerID string
+	TenantID int64
+}
+
+var playerHandlerCache *sc.Cache[PHCKey, *PlayerHandlerResult]
+
+func setupPlayerHandlerCache() {
+	playerHandlerCache, _ = sc.New[PHCKey, *PlayerHandlerResult](retrievePlayerHandlerResult, 300*time.Hour, 300*time.Hour)
+}
+
+func forgetPlayerHandlerCache(playerID string, tenantID int64) {
+	phcKey := PHCKey{
+		PlayerID: playerID,
+		TenantID: tenantID,
+	}
+	playerHandlerCache.Forget(phcKey)
+}
+
+func retrievePlayerHandlerResult(ctx context.Context, key PHCKey) (*PlayerHandlerResult, error) {
+	tenantID := key.TenantID
+	playerID := key.PlayerID
+
+	tenantDB, err := tenantDB.Get(context.Background(), tenantID)
+	if err != nil {
+		return nil, err
+	}
+	// defer tenantDB.Close()
+
+	p, err := retrievePlayer(ctx, tenantDB, playerID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, echo.NewHTTPError(http.StatusNotFound, "player not found")
+		}
+		return nil, fmt.Errorf("error retrievePlayer: %w", err)
+	}
+
+	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
+	fl, err := flockByTenantID(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("error flockByTenantID: %w", err)
+	}
+	defer fl.Close()
+	pss := []PlayerScoreRow{} // make([]PlayerScoreRow, 0, len(cs))
+	// cs := []CompetitionRow{}
+	if err := tenantDB.SelectContext(
+		ctx,
+		&pss,
+		"SELECT p.tenant_id AS tenant_id, p.id AS id, player_id, competition_id, score, row_num, p.created_at AS created_at, p.updated_at AS updated_at"+
+			" FROM player_score AS p INNER JOIN competition ON competition_id = competition.id"+
+			" WHERE player_id = ? AND p.tenant_id = ?"+
+			" GROUP BY competition_id HAVING max(row_num) == row_num"+
+			" ORDER BY competition.created_at ASC",
+		p.ID,
+		tenantID,
+	); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("error Select player_score: %w", err)
+	}
+	// for _, c := range cs {
+	// 	ps := PlayerScoreRow{}
+	// 	if err := tenantDB.GetContext(
+	// 		ctx,
+	// 		&ps,
+	// 		// 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
+	// 		"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
+	// 		v.tenantID,
+	// 		c.ID,
+	// 		p.ID,
+	// 	); err != nil {
+	// 		// 行がない = スコアが記録されてない
+	// 		if errors.Is(err, sql.ErrNoRows) {
+	// 			continue
+	// 		}
+	// 		return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, playerID=%s, %w", v.tenantID, c.ID, p.ID, err)
+	// 	}
+	// 	pss = append(pss, ps)
+	// }
+
+	psds := make([]PlayerScoreDetail, 0, len(pss))
+	for _, ps := range pss {
+		comp, err := retrieveCompetition(ctx, tenantDB, ps.CompetitionID)
+		if err != nil {
+			return nil, fmt.Errorf("error retrieveCompetition: %w", err)
+		}
+		psds = append(psds, PlayerScoreDetail{
+			CompetitionTitle: comp.Title,
+			Score:            ps.Score,
+		})
+	}
+
+	return &PlayerHandlerResult{
+		Player: PlayerDetail{
+			ID:             p.ID,
+			DisplayName:    p.DisplayName,
+			IsDisqualified: p.IsDisqualified,
+		},
+		Scores: psds,
+	}, nil
+}
+
 // 参加者向けAPI
 // GET /api/player/player/:player_id
 // 参加者の詳細情報を取得する
@@ -1302,79 +1415,21 @@ func playerHandler(c echo.Context) error {
 	if playerID == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "player_id is required")
 	}
-	p, err := retrievePlayer(ctx, tenantDB, playerID)
+
+	key := PHCKey{
+		PlayerID: playerID,
+		TenantID: v.tenantID,
+	}
+
+	res, err := playerHandlerCache.Get(context.Background(), key)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusNotFound, "player not found")
-		}
-		return fmt.Errorf("error retrievePlayer: %w", err)
+		return err
 	}
 
-	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-	fl, err := flockByTenantID(v.tenantID)
-	if err != nil {
-		return fmt.Errorf("error flockByTenantID: %w", err)
-	}
-	defer fl.Close()
-	pss := []PlayerScoreRow{} // make([]PlayerScoreRow, 0, len(cs))
-	// cs := []CompetitionRow{}
-	if err := tenantDB.SelectContext(
-		ctx,
-		&pss,
-		"SELECT p.tenant_id AS tenant_id, p.id AS id, player_id, competition_id, score, row_num, p.created_at AS created_at, p.updated_at AS updated_at"+
-			" FROM player_score AS p INNER JOIN competition ON competition_id = competition.id"+
-			" WHERE player_id = ? AND p.tenant_id = ?"+
-			" GROUP BY competition_id HAVING max(row_num) = row_num"+
-			" ORDER BY competition.created_at ASC",
-		p.ID,
-		v.tenantID,
-	); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("error Select player_score: %w", err)
-	}
-	// for _, c := range cs {
-	// 	ps := PlayerScoreRow{}
-	// 	if err := tenantDB.GetContext(
-	// 		ctx,
-	// 		&ps,
-	// 		// 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
-	// 		"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
-	// 		v.tenantID,
-	// 		c.ID,
-	// 		p.ID,
-	// 	); err != nil {
-	// 		// 行がない = スコアが記録されてない
-	// 		if errors.Is(err, sql.ErrNoRows) {
-	// 			continue
-	// 		}
-	// 		return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, playerID=%s, %w", v.tenantID, c.ID, p.ID, err)
-	// 	}
-	// 	pss = append(pss, ps)
-	// }
-
-	psds := make([]PlayerScoreDetail, 0, len(pss))
-	for _, ps := range pss {
-		comp, err := retrieveCompetition(ctx, tenantDB, ps.CompetitionID)
-		if err != nil {
-			return fmt.Errorf("error retrieveCompetition: %w", err)
-		}
-		psds = append(psds, PlayerScoreDetail{
-			CompetitionTitle: comp.Title,
-			Score:            ps.Score,
-		})
-	}
-
-	res := SuccessResult{
+	return c.JSON(http.StatusOK, SuccessResult{
 		Status: true,
-		Data: PlayerHandlerResult{
-			Player: PlayerDetail{
-				ID:             p.ID,
-				DisplayName:    p.DisplayName,
-				IsDisqualified: p.IsDisqualified,
-			},
-			Scores: psds,
-		},
-	}
-	return c.JSON(http.StatusOK, res)
+		Data:   res,
+	})
 }
 
 type CompetitionRank struct {
@@ -1457,7 +1512,7 @@ func competitionRankingHandler(c echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
-	//defer fl.Close()
+	// defer fl.Close()
 	pss := []PlayerScoreWithPlayer{}
 	if err := tenantDB.SelectContext(
 		ctx,

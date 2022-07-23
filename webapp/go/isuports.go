@@ -251,7 +251,6 @@ func Run() {
 			return
 		}
 	}
-	e.Logger.Infof("DELETED : %d", count)
 
 	port := getEnv("SERVER_APP_PORT", "3000")
 	e.Logger.Infof("starting isuports server on : %s ...", port)

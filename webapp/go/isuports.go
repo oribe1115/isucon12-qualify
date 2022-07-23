@@ -221,7 +221,7 @@ func Run() {
 		&vhs,
 		"SELECT * FROM visit_history GROUP BY player_id HAVING MIN(created_at)!=created_at",
 	); err != nil {
-		fmt.Errorf("error Select visit_history: %w", err)
+		e.Logger.Fatalf("error Select visit_history: %w", err)
 		return
 	}
 	for _, vh := range vhs {
@@ -229,7 +229,7 @@ func Run() {
 			"DELETE FROM visit_history WHERE tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at = ?",
 			vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt,
 		); err != nil {
-			fmt.Errorf("error Delete player_score: tenantID=%d, competitionID=%s, %w", vh.TenantID, vh.CompetitionID, err)
+			e.Logger.Fatalf("error Delete player_score: tenantID=%d, competitionID=%s, %w", vh.TenantID, vh.CompetitionID, err)
 			return
 		}
 	}

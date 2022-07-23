@@ -1274,8 +1274,8 @@ func retrievePlayerHandlerResult(ctx context.Context, key PHCKey) (*PlayerHandle
 		return nil, fmt.Errorf("error flockByTenantID: %w", err)
 	}
 	defer fl.Close()
-	pss := []PlayerScoreRow{} //make([]PlayerScoreRow, 0, len(cs))
-	//cs := []CompetitionRow{}
+	pss := []PlayerScoreRow{} // make([]PlayerScoreRow, 0, len(cs))
+	// cs := []CompetitionRow{}
 	if err := tenantDB.SelectContext(
 		ctx,
 		&pss,
@@ -1321,18 +1321,14 @@ func retrievePlayerHandlerResult(ctx context.Context, key PHCKey) (*PlayerHandle
 		})
 	}
 
-	res := SuccessResult{
-		Status: true,
-		Data: PlayerHandlerResult{
-			Player: PlayerDetail{
-				ID:             p.ID,
-				DisplayName:    p.DisplayName,
-				IsDisqualified: p.IsDisqualified,
-			},
-			Scores: psds,
+	return &PlayerHandlerResult{
+		Player: PlayerDetail{
+			ID:             p.ID,
+			DisplayName:    p.DisplayName,
+			IsDisqualified: p.IsDisqualified,
 		},
-	}
-	return &res
+		Scores: psds,
+	}, nil
 }
 
 // 参加者向けAPI
@@ -1374,7 +1370,10 @@ func playerHandler(c echo.Context) error {
 		return err
 	}
 
-	return c.JSON(http.StatusOK, res)
+	return c.JSON(http.StatusOK, SuccessResult{
+		Status: true,
+		Data:   res,
+	})
 }
 
 type CompetitionRank struct {
@@ -1457,7 +1456,7 @@ func competitionRankingHandler(c echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
-	//defer fl.Close()
+	// defer fl.Close()
 	pss := []PlayerScoreWithPlayer{}
 	if err := tenantDB.SelectContext(
 		ctx,

@@ -913,7 +913,7 @@ func playerDisqualifiedHandler(c echo.Context) error {
 		},
 	}
 
-	go forgetPlayerHandlerCache(playerID, v.tenantID)
+	forgetPlayerHandlerCache(playerID, v.tenantID)
 
 	return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
 }
@@ -1135,7 +1135,7 @@ func competitionScoreHandler(c echo.Context) error {
 			UpdatedAt:     now,
 		})
 
-		go forgetPlayerHandlerCache(playerID, v.tenantID)
+		forgetPlayerHandlerCache(playerID, v.tenantID)
 	}
 
 	if _, err := tenantDB.ExecContext(

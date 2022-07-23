@@ -17,4 +17,4 @@ services:
     init: true
 
     ports:
-      - "8090:8090" # pprof用
+      - "6060:6060" # pprof用

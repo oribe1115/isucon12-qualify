@@ -229,7 +229,7 @@ func Run() {
 			"DELETE FROM visit_history WHERE tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at = ?",
 			vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt,
 		); err != nil {
-			fmt.Errorf("error Delete player_score: tenantID=%d, competitionID=%s, %w", v.tenantID, vh.CompetitionID, err)
+			fmt.Errorf("error Delete player_score: tenantID=%d, competitionID=%s, %w", vh.TenantID, vh.CompetitionID, err)
 			return
 		}
 	}

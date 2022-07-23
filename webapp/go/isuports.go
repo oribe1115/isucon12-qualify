@@ -29,6 +29,7 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/motoki317/sc"
 )
 
 const (
@@ -46,7 +47,9 @@ var (
 	// 正しいテナント名の正規表現
 	tenantNameRegexp = regexp.MustCompile(`^[a-z][a-z0-9-]{0,61}[a-z0-9]$`)
 
-	adminDB *sqlx.DB
+	adminDB  *sqlx.DB
+	rootDB   *sqlx.DB
+	tenantDB *sc.Cache[int64, *sqlx.DB]
 
 	sqliteDriverName = "sqlite3"
 )
@@ -72,29 +75,35 @@ func connectAdminDB() (*sqlx.DB, error) {
 	return sqlx.Open("mysql", dsn)
 }
 
-// テナントDBのパスを返す
-func tenantDBPath(id int64) string {
-	tenantDBDir := getEnv("ISUCON_TENANT_DB_DIR", "../tenant_db")
-	return filepath.Join(tenantDBDir, fmt.Sprintf("%d.db", id))
-}
-
-// テナントDBに接続する
-func connectToTenantDB(id int64) (*sqlx.DB, error) {
-	p := tenantDBPath(id)
-	db, err := sqlx.Open(sqliteDriverName, fmt.Sprintf("file:%s?mode=rw", p))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open tenant DB: %w", err)
-	}
-	return db, nil
+// connectDB DBを指定しない接続
+func connectDB() (*sqlx.DB, error) {
+	config := mysql.NewConfig()
+	config.Net = "tcp"
+	config.Addr = getEnv("ISUCON_DB_HOST", "127.0.0.1") + ":" + getEnv("ISUCON_DB_PORT", "3306")
+	config.User = getEnv("ISUCON_DB_USER", "isucon")
+	config.Passwd = getEnv("ISUCON_DB_PASSWORD", "isucon")
+	// config.DBName = getEnv("ISUCON_DB_NAME", "isuports")
+	config.ParseTime = true
+	config.MultiStatements = true
+	dsn := config.FormatDSN()
+	return sqlx.Open("mysql", dsn)
 }
 
 // テナントDBを新規に作成する
 func createTenantDB(id int64) error {
-	p := tenantDBPath(id)
-
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("sqlite3 %s < %s", p, tenantDBSchemaFilePath))
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to exec sqlite3 %s < %s, out=%s: %w", p, tenantDBSchemaFilePath, string(out), err)
+	if _, err := rootDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `tenant_%d`", id)); err != nil {
+		return fmt.Errorf("failed to drop database: %v", err)
+	}
+	if _, err := rootDB.Exec(fmt.Sprintf("CREATE DATABASE `tenant_%d`", id)); err != nil {
+		return fmt.Errorf("failed to create database: %v", err)
+	}
+	dbSchema, err := os.ReadFile(tenantDBSchemaFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read schema file: %v", err)
+	}
+	fullSchema := fmt.Sprintf("USE `tenant_%d`;\n%s", id, string(dbSchema))
+	if _, err := rootDB.Exec(fullSchema); err != nil {
+		return fmt.Errorf("failed to init database: %v", err)
 	}
 	return nil
 }
@@ -215,6 +224,27 @@ func Run() {
 	}
 	adminDB.SetMaxOpenConns(10)
 	defer adminDB.Close()
+
+	rootDB, err = connectDB()
+	if err != nil {
+		e.Logger.Fatalf("failed to connect db: %v", err)
+		return
+	}
+	rootDB.SetMaxOpenConns(10)
+	defer rootDB.Close()
+
+	tenantDB = sc.NewMust(func(_ context.Context, id int64) (*sqlx.DB, error) {
+		// テナントDBに接続する
+		config := mysql.NewConfig()
+		config.Net = "tcp"
+		config.Addr = getEnv("ISUCON_DB_HOST", "127.0.0.1") + ":" + getEnv("ISUCON_DB_PORT", "3306")
+		config.User = getEnv("ISUCON_DB_USER", "isucon")
+		config.Passwd = getEnv("ISUCON_DB_PASSWORD", "isucon")
+		config.DBName = fmt.Sprintf("tenant_%d", id)
+		config.ParseTime = true
+		dsn := config.FormatDSN()
+		return sqlx.Open("mysql", dsn)
+	}, 300*time.Hour, 300*time.Hour)
 
 	port := getEnv("SERVER_APP_PORT", "3000")
 	e.Logger.Infof("starting isuports server on : %s ...", port)
@@ -700,7 +730,7 @@ func tenantsBillingHandler(c echo.Context) error {
 				Name:        t.Name,
 				DisplayName: t.DisplayName,
 			}
-			tenantDB, err := connectToTenantDB(t.ID)
+			tenantDB, err := tenantDB.Get(context.Background(), t.ID)
 			if err != nil {
 				return fmt.Errorf("failed to connectToTenantDB: %w", err)
 			}
@@ -761,7 +791,7 @@ func playersListHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role organizer required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return fmt.Errorf("error connectToTenantDB: %w", err)
 	}
@@ -807,7 +837,7 @@ func playersAddHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role organizer required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -870,7 +900,7 @@ func playerDisqualifiedHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role organizer required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -930,7 +960,7 @@ func competitionsAddHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role organizer required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -976,7 +1006,7 @@ func competitionFinishHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role organizer required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -1026,7 +1056,7 @@ func competitionScoreHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role organizer required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -1179,7 +1209,7 @@ func billingHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role organizer required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -1236,7 +1266,7 @@ func playerHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role player required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -1264,8 +1294,8 @@ func playerHandler(c echo.Context) error {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
 	defer fl.Close()
-	pss := []PlayerScoreRow{} //make([]PlayerScoreRow, 0, len(cs))
-	//cs := []CompetitionRow{}
+	pss := []PlayerScoreRow{} // make([]PlayerScoreRow, 0, len(cs))
+	// cs := []CompetitionRow{}
 	if err := tenantDB.SelectContext(
 		ctx,
 		&pss,
@@ -1351,7 +1381,7 @@ func competitionRankingHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role player required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -1499,7 +1529,7 @@ func playerCompetitionsHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role player required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -1523,7 +1553,7 @@ func organizerCompetitionsHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "role organizer required")
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return err
 	}
@@ -1614,7 +1644,7 @@ func meHandler(c echo.Context) error {
 		})
 	}
 
-	tenantDB, err := connectToTenantDB(v.tenantID)
+	tenantDB, err := tenantDB.Get(context.Background(), v.tenantID)
 	if err != nil {
 		return fmt.Errorf("error connectToTenantDB: %w", err)
 	}

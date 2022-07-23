@@ -1,3 +1,7 @@
+# for 'tenant_%' databases
+GRANT ALL PRIVILEGES ON *.* TO isucon@'%';
+FLUSH PRIVILEGES;
+
 DELETE FROM tenant WHERE id > 100;
 DELETE FROM visit_history WHERE created_at >= '1654041600';
 UPDATE id_generator SET id=2678400000 WHERE stub='a';

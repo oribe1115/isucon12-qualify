@@ -7,9 +7,11 @@ services:
       ISUCON_DB_USER: isucon
       ISUCON_DB_PASSWORD: isucon
       ISUCON_DB_NAME: isuports
+      ISUCON_TENANT_DB_DIR: /home/isucon/webapp/tenant_db_index
     network_mode: host
     volumes:
       - /home/isucon/webapp/tenant_db:/home/isucon/webapp/tenant_db
+      - /home/isucon/webapp/tenant_db_index:/home/isucon/webapp/tenant_db_index
       - /home/isucon/webapp/sql:/home/isucon/webapp/sql
       - /home/isucon/webapp/public.pem:/home/isucon/webapp/public.pem:ro
       - /home/isucon/initial_data:/home/isucon/initial_data

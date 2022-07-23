@@ -70,6 +70,8 @@ func connectAdminDB() (*sqlx.DB, error) {
 	config.Passwd = getEnv("ISUCON_DB_PASSWORD", "isucon")
 	config.DBName = getEnv("ISUCON_DB_NAME", "isuports")
 	config.ParseTime = true
+	config.Params = map[string]string{}
+	config.Params["sql_mode"] = "NO_ENGINE_SUBSTITUTION"
 	dsn := config.FormatDSN()
 	return sqlx.Open("mysql", dsn)
 }
@@ -1491,7 +1493,8 @@ func competitionRankingHandler(c echo.Context) error {
 			" player.id AS 'player.id', player.display_name AS 'player.display_name'"+
 			" FROM player_score "+
 			" JOIN player ON player.id = player_score.player_id "+
-			" WHERE player_score.tenant_id = ? AND player_score.competition_id = ? ORDER BY row_num DESC",
+			" WHERE player_score.tenant_id = ? AND player_score.competition_id = ? "+
+			" GROUP BY player.id HAVING max(row_num) == row_num",
 		tenant.ID,
 		competitionID,
 	); err != nil {

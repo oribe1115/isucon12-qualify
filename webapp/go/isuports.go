@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -565,11 +566,28 @@ type VisitHistorySummaryRow struct {
 	MinCreatedAt int64  `db:"min_created_at"`
 }
 
+var billingReportCache sync.Map = sync.Map{}
+
 // 大会ごとの課金レポートを計算する
 func billingReportByCompetition(ctx context.Context, tenantDB dbOrTx, tenantID int64, competitonID string) (*BillingReport, error) {
 	comp, err := retrieveCompetition(ctx, tenantDB, competitonID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieveCompetition: %w", err)
+	}
+	if !comp.FinishedAt.Valid {
+		return &BillingReport{
+			CompetitionID:     comp.ID,
+			CompetitionTitle:  comp.Title,
+			PlayerCount:       0,
+			VisitorCount:      0,
+			BillingPlayerYen:  100 * 0, // スコアを登録した参加者は100円
+			BillingVisitorYen: 10 * 0,  // ランキングを閲覧だけした(スコアを登録していない)参加者は10円
+			BillingYen:        100*0 + 10*0,
+		}, nil
+	}
+	cache, ok := billingReportCache.Load(competitonID)
+	if ok {
+		return cache.(*BillingReport), nil
 	}
 
 	// ランキングにアクセスした参加者のIDを取得する
@@ -626,7 +644,7 @@ func billingReportByCompetition(ctx context.Context, tenantDB dbOrTx, tenantID i
 			}
 		}
 	}
-	return &BillingReport{
+	result := &BillingReport{
 		CompetitionID:     comp.ID,
 		CompetitionTitle:  comp.Title,
 		PlayerCount:       playerCount,
@@ -634,7 +652,9 @@ func billingReportByCompetition(ctx context.Context, tenantDB dbOrTx, tenantID i
 		BillingPlayerYen:  100 * playerCount, // スコアを登録した参加者は100円
 		BillingVisitorYen: 10 * visitorCount, // ランキングを閲覧だけした(スコアを登録していない)参加者は10円
 		BillingYen:        100*playerCount + 10*visitorCount,
-	}, nil
+	}
+	billingReportCache.Store(competitonID, result)
+	return result, nil
 }
 
 type TenantWithBilling struct {
@@ -1666,5 +1686,6 @@ func initializeHandler(c echo.Context) error {
 	res := InitializeHandlerResult{
 		Lang: "go",
 	}
+	billingReportCache = sync.Map{}
 	return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
 }

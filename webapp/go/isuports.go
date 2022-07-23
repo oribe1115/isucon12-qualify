@@ -252,7 +252,7 @@ func Run() {
 				"DELETE FROM visit_history WHERE 1=0"+taskStr,
 				taskArray...,
 			); err != nil {
-				e.Logger.Fatalf("error Delete player_score: tenantID=%d, competitionID=%s, %w", vh.TenantID, vh.CompetitionID, err)
+				e.Logger.Fatalf("error Delete player_score: %w", err)
 				return
 			}
 			taskStr = ""
@@ -264,7 +264,7 @@ func Run() {
 			"DELETE FROM visit_history WHERE 1=0"+taskStr,
 			taskArray...,
 		); err != nil {
-			e.Logger.Fatalf("error Delete player_score: tenantID=%d, competitionID=%s, %w", vh.TenantID, vh.CompetitionID, err)
+			e.Logger.Fatalf("error Delete player_score: %w", err)
 			return
 		}
 	}

@@ -218,26 +218,40 @@ func Run() {
 	adminDB.SetMaxOpenConns(10)
 	defer adminDB.Close()
 
+	vhs1 := []VisitHistorySummaryRow2{}
+	if err := adminDB.Select(
+		&vhs1,
+		"SELECT player_id, tenant_id, competition_id, MIN(created_at) AS created_at, MIN(created_at) AS min_created_at FROM visit_history GROUP BY tenant_id, competition_id, player_id",
+	); err != nil && err != sql.ErrNoRows {
+		e.Logger.Fatalf("error Select visit_history: %w", err)
+	}
+	minCreatedAtMap := map[string]int64{}
+	for _, vh := range vhs1 {
+		minCreatedAtMap[strconv.FormatInt(vh.TenantID, 10)+","+vh.CompetitionID+","+vh.PlayerID] = vh.MinCreatedAt
+	}
 	vhs := []VisitHistorySummaryRow2{}
 	if err := adminDB.Select(
 		&vhs,
-		"SELECT player_id, tenant_id, competition_id, created_at, MIN(created_at) AS min_created_at FROM visit_history GROUP BY tenant_id, competition_id, player_id",
+		"SELECT player_id, tenant_id, competition_id, created_at, created_at as min_created_at FROM visit_history",
 	); err != nil {
 		e.Logger.Fatalf("error Select visit_history: %w", err)
 		return
 	}
+	count := 0
 	for _, vh := range vhs {
-		if vh.MinCreatedAt == vh.CreatedAt {
+		if minCreatedAtMap[strconv.FormatInt(vh.TenantID, 10)+","+vh.CompetitionID+","+vh.PlayerID] == vh.CreatedAt {
 			continue
 		}
+		count += 1
 		if _, err := adminDB.Exec(
-			"DELETE FROM visit_history WHERE tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at = ?",
-			vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt,
+			"DELETE FROM visit_history WHERE tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at = ? AND updated_at = ?",
+			vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt, vh.CreatedAt,
 		); err != nil {
 			e.Logger.Fatalf("error Delete player_score: tenantID=%d, competitionID=%s, %w", vh.TenantID, vh.CompetitionID, err)
 			return
 		}
 	}
+	e.Logger.Infof("DELETED : %d", count)
 
 	port := getEnv("SERVER_APP_PORT", "3000")
 	e.Logger.Infof("starting isuports server on : %s ...", port)

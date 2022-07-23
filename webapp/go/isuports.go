@@ -216,6 +216,24 @@ func Run() {
 	adminDB.SetMaxOpenConns(10)
 	defer adminDB.Close()
 
+	vhs := []VisitHistorySummaryRow2{}
+	if err := adminDB.Select(
+		&vhs,
+		"SELECT * FROM visit_history GROUP BY player_id HAVING MIN(created_at)!=created_at",
+	); err != nil {
+		fmt.Errorf("error Select visit_history: %w", err)
+		return
+	}
+	for _, vh := range vhs {
+		if _, err := adminDB.Exec(
+			"DELETE FROM visit_history WHERE tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at = ?",
+			vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt,
+		); err != nil {
+			fmt.Errorf("error Delete player_score: tenantID=%d, competitionID=%s, %w", v.tenantID, vh.CompetitionID, err)
+			return
+		}
+	}
+
 	port := getEnv("SERVER_APP_PORT", "3000")
 	e.Logger.Infof("starting isuports server on : %s ...", port)
 	serverPort := fmt.Sprintf(":%s", port)
@@ -563,6 +581,12 @@ type VisitHistoryRow struct {
 type VisitHistorySummaryRow struct {
 	PlayerID     string `db:"player_id"`
 	MinCreatedAt int64  `db:"min_created_at"`
+}
+type VisitHistorySummaryRow2 struct {
+	PlayerID      string `db:"player_id"`
+	TenantID      int64  `db:"tenant_id"`
+	CompetitionID string `db:"competition_id"`
+	CreatedAt     int64  `db:"created_at"`
 }
 
 // 大会ごとの課金レポートを計算する

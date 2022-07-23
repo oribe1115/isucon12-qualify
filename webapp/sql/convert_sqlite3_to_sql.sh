@@ -19,5 +19,5 @@ EOF
   grep "INSERT INTO player_score VALUES" < "tenant_data_tmp_$tenant_id.sql" > "tenant_data_player_score_$tenant_id.sql"
   sed -e ':a;N;$!ba;s/;\nINSERT INTO player_score VALUES/,/g' "tenant_data_player_score_$tenant_id.sql" >> "tenant_data_$tenant_id.sql"
   cat "tenant_init_$tenant_id.sql" tenant/10_schema.sql "tenant_data_$tenant_id.sql" > "../tenant_db/tenant_$tenant_id.sql"
-  rm "tenant_init_$tenant_id.sql" "tenant_data_$tenant_id.sql" "tenant_data_tmp_$tenant_id.sql"
+  rm "tenant_init_$tenant_id.sql" "tenant_data_$tenant_id.sql" "tenant_data_tmp_$tenant_id.sql" "tenant_data_player_score_$tenant_id.sql"
 done

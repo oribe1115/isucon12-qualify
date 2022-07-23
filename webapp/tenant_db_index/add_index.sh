@@ -1,3 +1,5 @@
+rm *.db
+cp -r ../../initial_data/*.db ./
 for var in `ls -1 *.db`
 do
   echo $var

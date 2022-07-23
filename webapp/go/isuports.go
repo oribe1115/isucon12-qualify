@@ -242,6 +242,8 @@ func Run() {
 		config.Passwd = getEnv("ISUCON_DB_PASSWORD", "isucon")
 		config.DBName = fmt.Sprintf("tenant_%d", id)
 		config.ParseTime = true
+		config.Params = map[string]string{}
+		config.Params["sql_mode"] = "NO_ENGINE_SUBSTITUTION"
 		dsn := config.FormatDSN()
 		return sqlx.Open("mysql", dsn)
 	}, 300*time.Hour, 300*time.Hour)

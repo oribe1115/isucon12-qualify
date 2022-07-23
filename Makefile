@@ -7,7 +7,7 @@ include env.sh
 USER:=isucon
 BIN_NAME:=isuports
 BUILD_DIR:=/home/isucon/webapp/go
-SERVICE_NAME:=$(BIN_NAME).go.service
+SERVICE_NAME:=$(BIN_NAME).service
 
 DB_PATH:=/etc/mysql
 NGINX_PATH:=/etc/nginx

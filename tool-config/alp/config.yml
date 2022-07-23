@@ -10,16 +10,16 @@ matching_groups:            # array
   
   - /api/organizer/players
   - /api/organizer/players/add
-  - /api/organizer/players/[0-9]+/disqualified
+  - /api/organizer/players/[0-9a-f]+/disqualified
   
   - /api/organizer/competitions/add
-  - /api/organizer/competition/[0-9]+/finish
-  - /api/organizer/competition/[0-9]+/score
+  - /api/organizer/competition/[0-9a-f]+/finish
+  - /api/organizer/competition/[0-9a-f]+/score
   - /api/organizer/billing
   - /api/organizer/competitions
 
   - /api/player/player/:player_id
-  - /api/player/competition/[0-9]+/ranking
+  - /api/player/competition/[0-9a-f]+/ranking
   - /api/player/competitions
 
   - /api/me

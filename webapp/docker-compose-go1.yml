@@ -1,4 +1,3 @@
-# ベースであって現在はserviceファイルから参照されない
 services:
   webapp:
     build: ./go

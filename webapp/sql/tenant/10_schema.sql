@@ -29,5 +29,5 @@ CREATE TABLE player_score (
   row_num BIGINT NOT NULL,
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL,
-  INDEX `competition_enant_player` (`competition_id`, `tenant_id`, `player_id`)
 );
+create index competition_enant_player on player_score(`competition_id`, `tenant_id`, `player_id`);

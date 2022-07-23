@@ -22,8 +22,8 @@ webapp/java
 webapp/tenant_db
 webapp/sql/90_data.sql
 
-!webapp/docker-compose-go.yml
 webapp/docker-compose-*.yml
+!webapp/docker-compose-go.yml
 
 initial_data
 

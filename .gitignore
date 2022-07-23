@@ -7,16 +7,25 @@ bench
 local
 go
 
-!isuumo/webapp/go
+!webapp/go
 
 # 使わない言語
-isuumo/webapp/frontend
-isuumo/webapp/nodejs
-isuumo/webapp/perl
-isuumo/webapp/php
-isuumo/webapp/python
-isuumo/webapp/ruby
-isuumo/webapp/rust
+webapp/frontend
+webapp/node
+webapp/perl
+webapp/php
+webapp/python
+webapp/ruby
+webapp/rust
+webapp/java
+
+webapp/tenant_db
+webapp/sql/90_data.sql
+
+!webapp/docker-compose-go.yml
+webapp/docker-compose-*.yml
+
+initial_data
 
 env.sh
 !s1/home/isucon/env.sh

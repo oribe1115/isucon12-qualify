@@ -5,19 +5,25 @@ query_string: true              # boolean
 output: count,5xx,method,uri,min,max,sum,avg,p99                    # string(comma separated)
 
 matching_groups:            # array
-  - /api/chair/buy/[0-9]+
-  - /api/chair/[0-9]+
-  - /api/chair/search?.+
+  - /api/admin/tenants/add
+  - /api/admin/tenants/billing
+  
+  - /api/organizer/players
+  - /api/organizer/players/add
+  - /api/organizer/players/[0-9]+/disqualified
+  
+  - /api/organizer/competitions/add
+  - /api/organizer/competition/[0-9]+/finish
+  - /api/organizer/competition/[0-9]+/score
+  - /api/organizer/billing
+  - /api/organizer/competitions
 
-  - /api/estate/req_doc/[0-9]+
-  - /api/estate/[0-9]+
-  - /api/recommended_estate/[0-9]+
-  - /api/estate/search?.+
+  - /api/player/player/:player_id
+  - /api/player/competition/[0-9]+/ranking
+  - /api/player/competitions
 
-  - /images/estate/.+
-  - /images/chair/.+
-  - /_next/static/.+
-
+  - /api/me
+  - /initialize
 
 # file:                       # string
 # query_string_ignore_values: # boolean

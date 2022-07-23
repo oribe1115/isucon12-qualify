@@ -28,3 +28,6 @@ CREATE TABLE `visit_history` (
   `created_at` BIGINT NOT NULL,
   PRIMARY KEY (`tenant_id`, `competition_id`, `player_id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4;
+-- ALTER TABLE visit_history DROP COLUMN updated_at;
+-- DELETE FROM visit_history GROUP BY player_id HAVING MIN(created_at)!=created_at;
+-- ALTER TABLE visit_history ADD PRIMARY KEY (`tenant_id`, `competition_id`, `player_id`);

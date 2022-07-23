@@ -1403,8 +1403,8 @@ func competitionRankingHandler(c echo.Context) error {
 		ctx,
 		&pss,
 		"SELECT "+
-			" player_score.player_id, player_score.score, player_score.row_num, "+
-			" player.id, player.display_name "+
+			" player_score.player_id AS 'player_score.player_id', player_score.score AS 'player_score.score', player_score.row_num AS 'player_score.row_num', "+
+			" player.id AS 'player.id', player.display_name AS 'player.display_name'"+
 			" FROM player_score "+
 			" JOIN player ON player.id = player_score.player_id "+
 			" WHERE player_score.tenant_id = ? AND player_score.competition_id = ? ORDER BY row_num DESC",

@@ -238,14 +238,31 @@ func Run() {
 		return
 	}
 	count := 0
+	taskStr := ""
+	taskArray := []interface{}{}
 	for _, vh := range vhs {
 		if minCreatedAtMap[strconv.FormatInt(vh.TenantID, 10)+","+vh.CompetitionID+","+vh.PlayerID] == vh.CreatedAt {
 			continue
 		}
 		count += 1
+		taskStr += "OR(tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at = ?)"
+		taskArray = append(taskArray, vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt)
+		if count%5000 == 0 {
+			if _, err := adminDB.Exec(
+				"DELETE FROM visit_history WHERE 1=0"+taskStr,
+				taskArray...,
+			); err != nil {
+				e.Logger.Fatalf("error Delete player_score: tenantID=%d, competitionID=%s, %w", vh.TenantID, vh.CompetitionID, err)
+				return
+			}
+			taskStr = ""
+			taskArray = []interface{}{}
+		}
+	}
+	if taskStr != "" {
 		if _, err := adminDB.Exec(
-			"DELETE FROM visit_history WHERE tenant_id = ? AND competition_id = ? AND player_id = ? AND created_at = ? AND updated_at = ?",
-			vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt, vh.CreatedAt,
+			"DELETE FROM visit_history WHERE 1=0"+taskStr,
+			taskArray...,
 		); err != nil {
 			e.Logger.Fatalf("error Delete player_score: tenantID=%d, competitionID=%s, %w", vh.TenantID, vh.CompetitionID, err)
 			return

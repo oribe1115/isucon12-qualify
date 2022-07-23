@@ -106,7 +106,10 @@ func dispenseID(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	return id.String(), nil
+	// 文字種変更周りの規定を考慮して念のため
+	idString:= strings.ReplaceAll(id.String(), "-", "")
+
+	return idString, nil
 
 	// var id int64
 	// var lastErr error

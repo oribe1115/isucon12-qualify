@@ -200,15 +200,15 @@ func Run() {
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	url0, err := url.Parse("http://192.168.0.11")
+	url0, err := url.Parse("http://192.168.0.11:3000")
 	if err != nil {
 		panic(err)
 	}
-	url1, err := url.Parse("http://192.168.0.12")
+	url1, err := url.Parse("http://192.168.0.12:3000")
 	if err != nil {
 		panic(err)
 	}
-	url2, err := url.Parse("http://192.168.0.13")
+	url2, err := url.Parse("http://192.168.0.13:3000")
 	if err != nil {
 		panic(err)
 	}

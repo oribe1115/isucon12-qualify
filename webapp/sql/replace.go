@@ -11,6 +11,28 @@ func handle(n int, err error) {
 	}
 }
 
+type IndexChunk struct {
+	From, To int
+}
+
+func IndexChunks(length int, chunkSize int) <-chan IndexChunk {
+	ch := make(chan IndexChunk)
+
+	go func() {
+		defer close(ch)
+
+		for i := 0; i < length; i += chunkSize {
+			idx := IndexChunk{i, i + chunkSize}
+			if length < idx.To {
+				idx.To = length
+			}
+			ch <- idx
+		}
+	}()
+
+	return ch
+}
+
 func main() {
 	// usage:
 	if len(os.Args) < 3 {
@@ -30,22 +52,16 @@ func main() {
 
 	lines := strings.Split(string(input), "\n")
 	const bulkLimit = 5000
-	for i, line := range lines {
-		if i%bulkLimit == 0 {
-			handle(newFile.WriteString(strings.TrimSuffix(line, ";") + ","))
-		} else {
-			handle(newFile.WriteString(strings.TrimSuffix(strings.TrimPrefix(line, "INSERT INTO player_score VALUES"), ";")))
-			if i == len(lines)-2 {
-				// last line is "COMMIT;"
-				// no-op
-			} else if i%bulkLimit != bulkLimit-1 {
-				handle(newFile.WriteString(","))
-			} else {
-				handle(newFile.WriteString(";\n"))
-			}
+	for idx := range IndexChunks(len(lines), bulkLimit) {
+		lines := lines[idx.From:idx.To]
+		trimmedLines := make([]string, len(lines))
+		for i := range lines {
+			trimmedLines[i] = strings.TrimSuffix(strings.TrimPrefix(lines[i], "INSERT INTO player_score VALUES"), ";")
 		}
+		handle(newFile.WriteString("INSERT INTO player_score VALUES "))
+		handle(newFile.WriteString(strings.Join(trimmedLines, ",")))
+		handle(newFile.WriteString(";\n"))
 	}
-	handle(newFile.WriteString(";\n"))
 	err = newFile.Close()
 	if err != nil {
 		panic(err)

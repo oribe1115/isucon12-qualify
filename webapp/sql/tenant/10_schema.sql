@@ -28,5 +28,6 @@ CREATE TABLE player_score (
   score BIGINT NOT NULL,
   row_num BIGINT NOT NULL,
   created_at BIGINT NOT NULL,
-  updated_at BIGINT NOT NULL
+  updated_at BIGINT NOT NULL,
+  KEY `player_score_tenant_id_competition_id` (`tenant_id`, `competition_id`)
 );

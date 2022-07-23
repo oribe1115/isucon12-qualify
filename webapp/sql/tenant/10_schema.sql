@@ -28,6 +28,6 @@ CREATE TABLE player_score (
   score BIGINT NOT NULL,
   row_num BIGINT NOT NULL,
   created_at BIGINT NOT NULL,
-  updated_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
 );
 create index competition_enant_player on player_score(`competition_id`, `tenant_id`, `player_id`);

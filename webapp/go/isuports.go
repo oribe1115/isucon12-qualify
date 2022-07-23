@@ -1232,7 +1232,7 @@ type PlayerHandlerResult struct {
 
 type PHCKey struct {
 	PlayerID string
-	TenantID string
+	TenantID int64
 }
 
 var playerHandlerCache *sc.Cache[PHCKey, *PlayerHandlerResult]
@@ -1241,7 +1241,7 @@ func setupPlayerHandlerCache() {
 	playerHandlerCache = sc.New[PHCKey, *PlayerHandlerResult](retrievePlayerHandlerResult, 3*time.Second, 3*time.Second)
 }
 
-func forgetPlayerHandlerCache(playerID string, tenantID string) {
+func forgetPlayerHandlerCache(playerID string, tenantID int64) {
 	phcKey := PHCKey{
 		PlayerID: playerID,
 		TenantID: tenantID,

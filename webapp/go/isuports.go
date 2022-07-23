@@ -1242,15 +1242,6 @@ func playerHandler(c echo.Context) error {
 		}
 		return fmt.Errorf("error retrievePlayer: %w", err)
 	}
-	cs := []CompetitionRow{}
-	if err := tenantDB.SelectContext(
-		ctx,
-		&cs,
-		"SELECT * FROM competition WHERE tenant_id = ? ORDER BY created_at ASC",
-		v.tenantID,
-	); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("error Select competition: %w", err)
-	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
 	fl, err := flockByTenantID(v.tenantID)
@@ -1258,26 +1249,40 @@ func playerHandler(c echo.Context) error {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
 	defer fl.Close()
-	pss := make([]PlayerScoreRow, 0, len(cs))
-	for _, c := range cs {
-		ps := PlayerScoreRow{}
-		if err := tenantDB.GetContext(
-			ctx,
-			&ps,
-			// 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
-			"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
-			v.tenantID,
-			c.ID,
-			p.ID,
-		); err != nil {
-			// 行がない = スコアが記録されてない
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, playerID=%s, %w", v.tenantID, c.ID, p.ID, err)
-		}
-		pss = append(pss, ps)
+	pss := []PlayerScoreRow{} //make([]PlayerScoreRow, 0, len(cs))
+	//cs := []CompetitionRow{}
+	if err := tenantDB.SelectContext(
+		ctx,
+		&pss,
+		"SELECT p.tenant_id AS tenant_id, p.id AS id, player_id, competition_id, score, row_num, p.created_at AS created_at, p.updated_at AS updated_at"+
+			" FROM player_score AS p INNER JOIN competition ON competition_id = competition.id"+
+			" WHERE player_id = ? AND p.tenant_id = ?"+
+			" GROUP BY competition_id HAVING max(row_num) == row_num"+
+			" ORDER BY competition.created_at ASC",
+		p.ID,
+		v.tenantID,
+	); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("error Select player_score: %w", err)
 	}
+	// for _, c := range cs {
+	// 	ps := PlayerScoreRow{}
+	// 	if err := tenantDB.GetContext(
+	// 		ctx,
+	// 		&ps,
+	// 		// 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
+	// 		"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
+	// 		v.tenantID,
+	// 		c.ID,
+	// 		p.ID,
+	// 	); err != nil {
+	// 		// 行がない = スコアが記録されてない
+	// 		if errors.Is(err, sql.ErrNoRows) {
+	// 			continue
+	// 		}
+	// 		return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, playerID=%s, %w", v.tenantID, c.ID, p.ID, err)
+	// 	}
+	// 	pss = append(pss, ps)
+	// }
 
 	psds := make([]PlayerScoreDetail, 0, len(pss))
 	for _, ps := range pss {

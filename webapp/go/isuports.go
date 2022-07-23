@@ -107,7 +107,7 @@ func dispenseID(ctx context.Context) (string, error) {
 	}
 
 	// 文字種変更周りの規定を考慮して念のため
-	idString:= strings.ReplaceAll(id.String(), "-", "")
+	idString := strings.ReplaceAll(id.String(), "-", "")
 
 	return idString, nil
 
@@ -1402,7 +1402,10 @@ func competitionRankingHandler(c echo.Context) error {
 	if err := tenantDB.SelectContext(
 		ctx,
 		&pss,
-		"SELECT player_score.*, player.* FROM player_score "+
+		"SELECT "+
+			" player_score.player_id, player_score.score, player_score.row_num, "+
+			" player.id, player.display_name "+
+			" FROM player_score "+
 			" JOIN player ON player.id = player_score.player_id "+
 			" WHERE player_score.tenant_id = ? AND player_score.competition_id = ? ORDER BY row_num DESC",
 		tenant.ID,

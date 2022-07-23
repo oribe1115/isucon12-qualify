@@ -249,7 +249,7 @@ func Run() {
 		taskArray = append(taskArray, vh.TenantID, vh.CompetitionID, vh.PlayerID, vh.CreatedAt)
 		if count%5000 == 0 {
 			if _, err := adminDB.Exec(
-				"DELETE FROM visit_history WHERE 1=0"+taskStr,
+				"DELETE FROM visit_history WHERE 1=0 "+taskStr,
 				taskArray...,
 			); err != nil {
 				e.Logger.Fatalf("error Delete player_score: %w", err)
@@ -261,7 +261,7 @@ func Run() {
 	}
 	if taskStr != "" {
 		if _, err := adminDB.Exec(
-			"DELETE FROM visit_history WHERE 1=0"+taskStr,
+			"DELETE FROM visit_history WHERE 1=0 "+taskStr,
 			taskArray...,
 		); err != nil {
 			e.Logger.Fatalf("error Delete player_score: %w", err)

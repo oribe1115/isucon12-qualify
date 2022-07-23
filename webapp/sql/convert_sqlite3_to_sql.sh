@@ -15,7 +15,9 @@ CREATE DATABASE \`tenant_$tenant_id\`;
 USE \`tenant_$tenant_id\`;
 EOF
   ./sqlite3-to-sql "../tenant_db/$tenant_id.db" > "tenant_data_tmp_$tenant_id.sql"
-  sed -e ':a;N;$!ba;s/;\nINSERT INTO competition VALUES/,/g' -e ':a;N;$!ba;s/;\nINSERT INTO player VALUES/,/g' -e ':a;N;$!ba;s/;\nINSERT INTO player_score VALUES/,/g' "tenant_data_tmp$tenant_id.sql" > "tenant_data_$tenant_id.sql"
+  grep -v "INSERT INTO player_score VALUES" < "tenant_data_tmp_$tenant_id.sql" > "tenant_data_$tenant_id.sql"
+  grep "INSERT INTO player_score VALUES" < "tenant_data_tmp_$tenant_id.sql" > "tenant_data_player_score_$tenant_id.sql"
+  sed -e ':a;N;$!ba;s/;\nINSERT INTO player_score VALUES/,/g' "tenant_data_player_score_$tenant_id.sql" >> "tenant_data_$tenant_id.sql"
   cat "tenant_init_$tenant_id.sql" tenant/10_schema.sql "tenant_data_$tenant_id.sql" > "../tenant_db/tenant_$tenant_id.sql"
   rm "tenant_init_$tenant_id.sql" "tenant_data_$tenant_id.sql" "tenant_data_tmp_$tenant_id.sql"
 done

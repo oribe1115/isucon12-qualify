@@ -910,7 +910,7 @@ func playerDisqualifiedHandler(c echo.Context) error {
 		},
 	}
 
-	go forgetPlayerHandlerCache(v.tenantID, playerID)
+	go forgetPlayerHandlerCache(playerID, v.tenantID)
 
 	return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
 }
@@ -1239,7 +1239,7 @@ type PHCKey struct {
 var playerHandlerCache *sc.Cache[PHCKey, *PlayerHandlerResult]
 
 func setupPlayerHandlerCache() {
-	playerHandlerCache = sc.New[PHCKey, *PlayerHandlerResult](retrievePlayerHandlerResult, 3*time.Second, 3*time.Second)
+	playerHandlerCache, _ = sc.New[PHCKey, *PlayerHandlerResult](retrievePlayerHandlerResult, 3*time.Second, 3*time.Second)
 }
 
 func forgetPlayerHandlerCache(playerID string, tenantID int64) {
@@ -1256,22 +1256,22 @@ func retrievePlayerHandlerResult(ctx context.Context, key PHCKey) (*PlayerHandle
 
 	tenantDB, err := connectToTenantDB(tenantID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tenantDB.Close()
 
 	p, err := retrievePlayer(ctx, tenantDB, playerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusNotFound, "player not found")
+			return nil, echo.NewHTTPError(http.StatusNotFound, "player not found")
 		}
-		return fmt.Errorf("error retrievePlayer: %w", err)
+		return nil, fmt.Errorf("error retrievePlayer: %w", err)
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
 	fl, err := flockByTenantID(tenantID)
 	if err != nil {
-		return fmt.Errorf("error flockByTenantID: %w", err)
+		return nil, fmt.Errorf("error flockByTenantID: %w", err)
 	}
 	defer fl.Close()
 	pss := []PlayerScoreRow{} //make([]PlayerScoreRow, 0, len(cs))
@@ -1287,7 +1287,7 @@ func retrievePlayerHandlerResult(ctx context.Context, key PHCKey) (*PlayerHandle
 		p.ID,
 		tenantID,
 	); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("error Select player_score: %w", err)
+		return nil, fmt.Errorf("error Select player_score: %w", err)
 	}
 	// for _, c := range cs {
 	// 	ps := PlayerScoreRow{}
@@ -1313,7 +1313,7 @@ func retrievePlayerHandlerResult(ctx context.Context, key PHCKey) (*PlayerHandle
 	for _, ps := range pss {
 		comp, err := retrieveCompetition(ctx, tenantDB, ps.CompetitionID)
 		if err != nil {
-			return fmt.Errorf("error retrieveCompetition: %w", err)
+			return nil, fmt.Errorf("error retrieveCompetition: %w", err)
 		}
 		psds = append(psds, PlayerScoreDetail{
 			CompetitionTitle: comp.Title,
@@ -1369,7 +1369,10 @@ func playerHandler(c echo.Context) error {
 		TenantID: v.tenantID,
 	}
 
-	res, _ := playerHandlerCache.Get(context.Background(), key)
+	res, err := playerHandlerCache.Get(context.Background(), key)
+	if err != nil {
+		return err
+	}
 
 	return c.JSON(http.StatusOK, res)
 }

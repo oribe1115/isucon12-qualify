@@ -197,6 +197,9 @@ func Run() {
 
 	// 参加者向けAPI
 	// 失格済みプレイヤーでリクエスト成功するとcriticalエラー（ただし3秒の余裕がある）
+	e.GET("/api/player/player/cache_stats", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, playerHandlerCache.Stats())
+	})
 	e.GET("/api/player/player/:player_id", playerHandler)                               // 1 pt
 	e.GET("/api/player/competition/:competition_id/ranking", competitionRankingHandler) // 1 pt
 	e.GET("/api/player/competitions", playerCompetitionsHandler)                        // 1 pt

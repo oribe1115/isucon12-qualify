@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	_ "net/http/pprof"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -145,6 +146,34 @@ func SetCacheControlPrivate(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
+type Balancer struct {
+	urls map[int]*url.URL
+}
+
+func (b *Balancer) AddTarget(*middleware.ProxyTarget) bool {
+	return true
+}
+
+func (b *Balancer) RemoveTarget(string) bool {
+	return true
+}
+
+func (b *Balancer) Next(c echo.Context) *middleware.ProxyTarget {
+	v, err := parseViewer(c)
+	if err != nil {
+		return &middleware.ProxyTarget{
+			Name: "0",
+			URL:  b.urls[0],
+			Meta: nil,
+		}
+	}
+	return &middleware.ProxyTarget{
+		Name: strconv.Itoa(int(v.tenantID % 3)),
+		URL:  b.urls[int(v.tenantID%3)],
+		Meta: nil,
+	}
+}
+
 // Run は cmd/isuports/main.go から呼ばれるエントリーポイントです
 func Run() {
 	go func() {
@@ -171,6 +200,36 @@ func Run() {
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	url0, err := url.Parse("http://192.168.0.11:3000")
+	if err != nil {
+		panic(err)
+	}
+	url1, err := url.Parse("http://192.168.0.12:3000")
+	if err != nil {
+		panic(err)
+	}
+	url2, err := url.Parse("http://192.168.0.13:3000")
+	if err != nil {
+		panic(err)
+	}
+	if os.Getenv("ISUPORTS_PROXY") == "true" {
+		e.Use(middleware.ProxyWithConfig(middleware.ProxyConfig{
+			Skipper: func(c echo.Context) bool {
+				v, err := parseViewer(c)
+				if err != nil {
+					return true
+				}
+				return v.tenantID%3 == 0
+			},
+			Balancer: &Balancer{
+				urls: map[int]*url.URL{
+					0: url0,
+					1: url1,
+					2: url2,
+				},
+			},
+		}))
+	}
 	e.Use(SetCacheControlPrivate)
 
 	// SaaS管理者向けAPI
@@ -1735,13 +1794,42 @@ type InitializeHandlerResult struct {
 // ベンチマーカーが起動したときに最初に呼ぶ
 // データベースの初期化などが実行されるため、スキーマを変更した場合などは適宜改変すること
 func initializeHandler(c echo.Context) error {
-	out, err := exec.Command(initializeScript).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error exec.Command: %s %e", string(out), err)
+	if os.Getenv("ISUPORTS_PROXY") == "true" {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, err := http.Post("http://192.168.0.12:3000/initialize", "", nil)
+			if err != nil {
+				panic(err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			_, err := http.Post("http://192.168.0.13:3000/initialize", "", nil)
+			if err != nil {
+				panic(err)
+			}
+		}()
+		out, err := exec.Command(initializeScript).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error exec.Command: %s %e", string(out), err)
+		}
+		res := InitializeHandlerResult{
+			Lang: "go",
+		}
+		billingReportCache = sync.Map{}
+		wg.Wait()
+		return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
+	} else {
+		out, err := exec.Command(initializeScript).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error exec.Command: %s %e", string(out), err)
+		}
+		res := InitializeHandlerResult{
+			Lang: "go",
+		}
+		billingReportCache = sync.Map{}
+		return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
 	}
-	res := InitializeHandlerResult{
-		Lang: "go",
-	}
-	billingReportCache = sync.Map{}
-	return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
 }
